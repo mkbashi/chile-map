@@ -1,0 +1,239 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+    <title>Chile Travel Map</title>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <style>
+        body { font-family: -apple-system, system-ui, sans-serif; margin: 0; padding: 0; height: 100vh; display: flex; flex-direction: column; overflow: hidden; }
+        #map { flex-grow: 1; z-index: 1; }
+
+        #sidebar {
+            background: white;
+            z-index: 1000;
+            display: flex;
+            flex-direction: column;
+            box-shadow: 0 0 15px rgba(0,0,0,0.2);
+            transition: transform 0.3s ease;
+        }
+
+        @media (max-width: 767px) {
+            #sidebar { position: absolute; bottom: 0; left: 0; right: 0; max-height: 70vh; border-top-left-radius: 15px; border-top-right-radius: 15px; }
+            #drawer-handle { padding: 12px; text-align: center; background: #f8f9fa; cursor: pointer; font-weight: bold; border-top-left-radius: 15px; border-top-right-radius: 15px; border-bottom: 1px solid #eee; }
+            .sidebar-content { display: none; padding: 15px; overflow-y: auto; }
+            .sidebar-content.active { display: block; }
+        }
+
+        @media (min-width: 768px) {
+            body { flex-direction: row; }
+            #sidebar { position: relative; width: 350px; height: 100vh; border-radius: 0; }
+            #drawer-handle { display: none; }
+            .sidebar-content { display: block !important; padding: 20px; overflow-y: auto; height: 100%; }
+        }
+
+        .filter-group { margin-bottom: 25px; }
+        .header-row { display: flex; justify-content: space-between; align-items: center; border-bottom: 2px solid #3498db; margin-bottom: 10px; padding-bottom: 5px; }
+        h3 { font-size: 14px; margin: 0; color: #2c3e50; }
+        .btn-row { display: flex; gap: 5px; }
+        button { border: none; padding: 6px 10px; font-size: 11px; border-radius: 4px; cursor: pointer; color: white; }
+        .select-btn { background: #2ecc71; }
+        .deselect-btn { background: #e74c3c; }
+        .geo-btn { background: #3498db; width: 100%; margin-bottom: 15px; padding: 10px; font-weight: bold; font-size: 13px; }
+        .geo-btn.active { background: #2c3e50; }
+        .checkbox-list { border: 1px solid #eee; padding: 10px; background: #fafafa; border-radius: 4px; }
+        .checkbox-item { display: flex; align-items: center; padding: 8px 0; font-size: 14px; cursor: pointer; border-bottom: 1px solid #f9f9f9; }
+        .checkbox-item input { width: 18px; height: 18px; margin-right: 12px; }
+        .count-badge { background: #eee; color: #666; font-size: 11px; font-weight: bold; padding: 2px 6px; border-radius: 10px; margin-right: 10px; min-width: 15px; text-align: center; }
+        .color-swatch { width: 12px; height: 12px; border-radius: 50%; margin-right: 10px; }
+        select { width: 100%; padding: 12px; border-radius: 5px; border: 1px solid #ccc; font-size: 16px; }
+    </style>
+</head>
+<body>
+
+<div id="map"></div>
+
+<div id="sidebar">
+    <div id="drawer-handle" onclick="toggleMobileDrawer()">☰ Show Filters</div>
+    <div class="sidebar-content" id="sidebarContent">
+        <h2 style="margin-top:0">Trip Planner</h2>
+        
+        <button id="geoBtn" class="geo-btn" onclick="toggleLocation()">📍 Find My Location</button>
+
+        <div class="filter-group">
+            <div class="header-row"><h3>City</h3></div>
+            <select id="cityFilter" onchange="onCityChange()">
+                <option value="all">All Cities</option>
+            </select>
+        </div>
+
+        <div class="filter-group">
+            <div class="header-row">
+                <h3>Activities</h3>
+                <div class="btn-row">
+                    <button class="select-btn" onclick="selectAll()">All</button>
+                    <button class="deselect-btn" onclick="deselectAll()">None</button>
+                </div>
+            </div>
+            <div id="activityCheckboxes" class="checkbox-list"></div>
+        </div>
+    </div>
+</div>
+
+<script>
+    const data = [{"name": "Banos de Colina", "description": "", "city": "Santiago", "type": "hot spring", "activities_raw": "thermal bath", "lat": -33.1834624, "lng": -70.5990436}, {"name": "Banos de Colina", "description": "", "city": "Santiago", "type": "hot spring", "activities_raw": "scenic drive", "lat": -33.1834624, "lng": -70.5990436}, {"name": "Lastarria", "description": "Bohemian", "city": "Santiago", "type": "neighborhood", "activities_raw": "shopping", "lat": -33.4382715, "lng": -70.6410854}, {"name": "Lastarria", "description": "Bohemian", "city": "Santiago", "type": "neighborhood", "activities_raw": "dining", "lat": -33.4382715, "lng": -70.6410854}, {"name": "Lastarria", "description": "Bohemian", "city": "Santiago", "type": "neighborhood", "activities_raw": "art galleries", "lat": -33.4382715, "lng": -70.6410854}, {"name": "Bellavista", "description": "", "city": "Santiago", "type": "neighborhood", "activities_raw": "street art", "lat": -33.4342807, "lng": -70.6333218}, {"name": "Bellavista", "description": "", "city": "Santiago", "type": "neighborhood", "activities_raw": "bar", "lat": -33.4342807, "lng": -70.6333218}, {"name": "Bellavista", "description": "", "city": "Santiago", "type": "neighborhood", "activities_raw": "dining", "lat": -33.4342807, "lng": -70.6333218}, {"name": "San Crist\u00f3bal Hill", "description": "teleferico/funicular", "city": "Santiago", "type": "hill", "activities_raw": "view", "lat": -33.4202404, "lng": -70.6313749}, {"name": "Plaza de Armas de Santiago", "description": "", "city": "Santiago", "type": "urban landmark", "activities_raw": "sightsee", "lat": -33.43782340000001, "lng": -70.6505019}, {"name": "Mercado Central de Santiago", "description": "", "city": "Santiago", "type": "market", "activities_raw": "urban exploration", "lat": -33.4340074, "lng": -70.6508379}, {"name": "El Morado Natural Monument", "description": "", "city": "Santiago", "type": "nature", "activities_raw": "sightsee", "lat": -33.784877, "lng": -70.071322}, {"name": "El Morado Natural Monument", "description": "", "city": "Santiago", "type": "nature", "activities_raw": "scenic drive", "lat": -33.784877, "lng": -70.071322}, {"name": "Termas Valle de Colina", "description": "", "city": "Santiago", "type": "hot spring", "activities_raw": "thermal bath", "lat": -33.8527374, "lng": -69.980942}, {"name": "Caj\u00f3n del Maipo", "description": "", "city": "Santiago", "type": "nature", "activities_raw": "TBD", "lat": -33.6539785, "lng": -70.0813385}, {"name": "Sky Costanera", "description": "", "city": "Santiago", "type": "observation deck", "activities_raw": "view", "lat": -33.4169579, "lng": -70.6067722}, {"name": "La Moneda Palace", "description": "guard change", "city": "Santiago", "type": "urban landmark", "activities_raw": "cultural event", "lat": -33.4424189, "lng": -70.65394549999999}, {"name": "Santa Luc\u00eda Hill", "description": "andes view on weekends", "city": "Santiago", "type": "hill", "activities_raw": "view", "lat": -33.4402778, "lng": -70.6433333}, {"name": "Chilean Museum of Pre-Columbian Art", "description": "", "city": "Santiago", "type": "museum", "activities_raw": "art museum", "lat": -33.4386677, "lng": -70.6523921}, {"name": "National Museum of Fine Arts", "description": "", "city": "Santiago", "type": "museum", "activities_raw": "art museum", "lat": -33.4353053, "lng": -70.6435365}, {"name": "Gabriela Mistral Cultural Centre", "description": "", "city": "Santiago", "type": "cultural center", "activities_raw": "cultural event", "lat": -33.4391942, "lng": -70.63984479999999}, {"name": "Gabriela Mistral Cultural Centre", "description": "", "city": "Santiago", "type": "cultural center", "activities_raw": "art", "lat": -33.4391942, "lng": -70.63984479999999}, {"name": "Gabriela Mistral Cultural Centre", "description": "", "city": "Santiago", "type": "cultural center", "activities_raw": "urban exploration", "lat": -33.4391942, "lng": -70.63984479999999}, {"name": "Maipo Wine Tours", "description": "", "city": "Santiago", "type": "food/wine tour", "activities_raw": "wine tasting", "lat": -33.7613593, "lng": -70.9109668}, {"name": "Templo Bah\u00e1'\u00ed de Sudam\u00e9rica", "description": "", "city": "Santiago", "type": "urban landmark", "activities_raw": "sightsee", "lat": -33.4764377, "lng": -70.5116725}, {"name": "El Yeso Dam", "description": "", "city": "Santiago", "type": "nature", "activities_raw": "sightsee", "lat": -33.6429251, "lng": -70.0652004}, {"name": "Cenco Costanera", "description": "", "city": "Santiago", "type": "mall", "activities_raw": "shopping", "lat": -33.4179935, "lng": -70.6063901}, {"name": "Mall Parque Arauco", "description": "", "city": "Santiago", "type": "mall", "activities_raw": "shopping", "lat": -33.4019302, "lng": -70.5785698}, {"name": "Vi\u00f1a Cousi\u00f1o Macul", "description": "", "city": "Santiago", "type": "winery", "activities_raw": "wine tasting", "lat": -33.4985562, "lng": -70.5625555}, {"name": "Oasis station. Cerro San Cristobal Cable Car", "description": "", "city": "Santiago", "type": "transportation", "activities_raw": "view", "lat": -33.4146797, "lng": -70.6155955}, {"name": "Museum of Memory & Human Rights", "description": "", "city": "Santiago", "type": "museum", "activities_raw": "cultural museum", "lat": -33.4397361, "lng": -70.6793861}, {"name": "Metropolitan Cathedral of Santiago", "description": "", "city": "Santiago", "type": "urban landmark", "activities_raw": "sightsee", "lat": -33.4376178, "lng": -70.651835}, {"name": "Parque Bicentenario", "description": "", "city": "Santiago", "type": "park", "activities_raw": "sightsee", "lat": -33.3986278, "lng": -70.60248039999999}, {"name": "Estaci\u00f3n P\u00edo Nono Funicular Santiago by Turistik", "description": "", "city": "Santiago", "type": "transportation", "activities_raw": "view", "lat": -33.4300359, "lng": -70.635853}, {"name": "Patio Bellavista", "description": "", "city": "Santiago", "type": "mall", "activities_raw": "shopping", "lat": -33.4338131, "lng": -70.6345936}, {"name": "Vi\u00f1a Aquitania", "description": "", "city": "Santiago", "type": "winery ", "activities_raw": "wine tasting", "lat": -33.49059200000001, "lng": -70.5498923}, {"name": "Centro Artesanal Santa Lucia", "description": "", "city": "Santiago", "type": "market", "activities_raw": "shopping", "lat": -33.4426757, "lng": -70.6438555}, {"name": "Isidora Goyenechea", "description": "fine dining", "city": "Santiago", "type": "neighborhood", "activities_raw": "dining", "lat": -33.4143597, "lng": -70.5979166}, {"name": "Vega Central de Santiago", "description": "", "city": "Santiago", "type": "market", "activities_raw": "shopping", "lat": -33.4300652, "lng": -70.6495745}, {"name": "Sculpture Park Museum", "description": "", "city": "Santiago", "type": "museum", "activities_raw": "art museum ", "lat": -33.4200009, "lng": -70.6130277}, {"name": "Barrio Yungay", "description": "", "city": "Santiago", "type": "neighborhood", "activities_raw": "street art", "lat": -33.4429112, "lng": -70.6731231}, {"name": "Vi\u00f1a Concha y Toro", "description": "", "city": "Santiago", "type": "winery", "activities_raw": "wine tasting", "lat": -33.635605, "lng": -70.57401949999999}, {"name": "National Library of Chile", "description": "", "city": "Santiago", "type": "urban landmark", "activities_raw": "sightsee", "lat": -33.4422661, "lng": -70.64565089999999}, {"name": "Barrio Brasil", "description": "", "city": "Santiago", "type": "neighborhood", "activities_raw": "street art", "lat": -33.4390218, "lng": -70.66692909999999}, {"name": "Franklin", "description": "", "city": "Santiago", "type": "street", "activities_raw": "street art", "lat": -33.4728669, "lng": -70.6420638}, {"name": "Barrio Italia", "description": "hipster; small shops", "city": "Santiago", "type": "neighborhood", "activities_raw": "shopping", "lat": -33.4457344, "lng": -70.6229024}, {"name": "Barrio Italia", "description": "hipster; small shops", "city": "Santiago", "type": "neighborhood", "activities_raw": "cafe", "lat": -33.4457344, "lng": -70.6229024}, {"name": "Barrio Italia", "description": "hipster; small shops", "city": "Santiago", "type": "neighborhood", "activities_raw": "street art", "lat": -33.4457344, "lng": -70.6229024}, {"name": "Emporio Zunino", "description": "Empanada; Entrance outside.", "city": "Santiago", "type": "restaurant", "activities_raw": "dining", "lat": -33.4340152, "lng": -70.65156}, {"name": "Constitution Place", "description": "", "city": "Santiago", "type": "urban landmark", "activities_raw": "sightsee", "lat": -33.44163169999999, "lng": -70.6540468}, {"name": "Parque Quinta Normal", "description": "", "city": "Santiago", "type": "park", "activities_raw": "sightsee", "lat": -33.4410758, "lng": -70.6827816}, {"name": "MAC Museum of Contemporary Art", "description": "", "city": "Santiago", "type": "museum", "activities_raw": "art museum", "lat": -33.4350872, "lng": -70.6444411}, {"name": "Cementerio General de Santiago", "description": "", "city": "Santiago", "type": "urban landmark", "activities_raw": "sightsee", "lat": -33.4176636, "lng": -70.6500999}, {"name": "Museo Cielo Abierto", "description": "", "city": "Santiago", "type": "museum", "activities_raw": "art museum", "lat": -33.5016315, "lng": -70.6608304}, {"name": "Willimapu", "description": "indigenous cusine", "city": "Santiago", "type": "restaurant", "activities_raw": "dining", "lat": -33.4746141, "lng": -70.640464}, {"name": "99 Restaurante", "description": "9 course", "city": "Santiago", "type": "restaurant", "activities_raw": "dining", "lat": -33.4038525, "lng": -70.58769269999999}, {"name": "Amaia restaurante", "description": "", "city": "Santiago", "type": "restaurant", "activities_raw": "dining", "lat": -33.4999157, "lng": -70.7534403}, {"name": "Ecordua - Adventures & Ecotourism", "description": "", "city": "Santiago", "type": "adventure tour", "activities_raw": "TBD", "lat": -33.4300168, "lng": -70.60797819999999}, {"name": "Vinolia", "description": "", "city": "Santiago", "type": "restaurant", "activities_raw": "dining", "lat": -33.4020745, "lng": -70.59767219999999}, {"name": "Chipe Libre - Rep\u00fablica Independiente del Pisco", "description": "", "city": "Santiago", "type": "restaurant", "activities_raw": "dining", "lat": -33.438316, "lng": -70.641375}, {"name": "Bocan\u00e1riz", "description": "wine flights", "city": "Santiago", "type": "restaurant", "activities_raw": "dining", "lat": -33.4384002, "lng": -70.64131929999999}, {"name": "Ambrosia Restaurant", "description": "", "city": "Santiago", "type": "restaurant", "activities_raw": "dining", "lat": -33.3783918, "lng": -70.5298301}, {"name": "Borag\u00f3", "description": "ingredients from across chile", "city": "Santiago", "type": "restaurant", "activities_raw": "dining", "lat": -33.3824972, "lng": -70.584028}, {"name": "Salvador Cocina y Caf\u00e9", "description": "", "city": "Santiago", "type": "restaurant", "activities_raw": "dining", "lat": -33.4412688, "lng": -70.6517612}, {"name": "Liguria", "description": "", "city": "Santiago", "type": "restaurant", "activities_raw": "dining", "lat": -33.4372593, "lng": -70.6409421}, {"name": "Valparaiso Cultural Park", "description": "", "city": "Valpraiso", "type": "cultural center", "activities_raw": "TBD", "lat": -33.046188, "lng": -71.627589}, {"name": "Cumming", "description": "", "city": "Valpraiso", "type": "street", "activities_raw": "nightlife", "lat": -33.0464166, "lng": -71.6268533}, {"name": "Fauna Hotel & Restaurante", "description": "", "city": "Valpraiso", "type": "hotel", "activities_raw": "dining", "lat": -33.0437735, "lng": -71.6269554}, {"name": "Hotel Brighton", "description": "streets around for handcraft", "city": "Valpraiso", "type": "hotel", "activities_raw": "view", "lat": -33.0427829, "lng": -71.6253169}, {"name": "Hotel Brighton", "description": "streets around for handcraft", "city": "Valpraiso", "type": "hotel", "activities_raw": "bar", "lat": -33.0427829, "lng": -71.6253169}, {"name": "Hotel Brighton", "description": "streets around for handcraft", "city": "Valpraiso", "type": "hotel", "activities_raw": "shopping", "lat": -33.0427829, "lng": -71.6253169}, {"name": "Carillo Armstrong", "description": "", "city": "Valpraiso", "type": "street", "activities_raw": "street art", "lat": -33.0445653, "lng": -71.6293802}, {"name": "Carillo Armstrong", "description": "", "city": "Valpraiso", "type": "street", "activities_raw": "view", "lat": -33.0445653, "lng": -71.6293802}, {"name": "Miraflores", "description": "", "city": "Valpraiso", "type": "street", "activities_raw": "street art", "lat": -33.0449057, "lng": -71.6296494}, {"name": "Cerro Alegre", "description": "", "city": "Valpraiso", "type": "hill", "activities_raw": "wander", "lat": -33.0430789, "lng": -71.6280588}, {"name": "Cerro Concepcion", "description": "", "city": "Valpraiso", "type": "hill", "activities_raw": "wander", "lat": -33.04253, "lng": -71.62638}, {"name": "H\u00e9ctor Calvo", "description": "start from bottom of steps", "city": "Valpraiso", "type": "street", "activities_raw": "street art", "lat": -33.0493028, "lng": -71.6223167}, {"name": "Avenida Elias", "description": "", "city": "Valpraiso", "type": "street", "activities_raw": "street art", "lat": -33.0451303, "lng": -71.6283422}, {"name": "Templeman", "description": "", "city": "Valpraiso", "type": "street", "activities_raw": "street art", "lat": -33.0426532, "lng": -71.6283549}, {"name": "Atahualpa", "description": "", "city": "Valpraiso", "type": "street", "activities_raw": "street art", "lat": -33.0461452, "lng": -71.6288082}, {"name": "Restaurante J Cruz M", "description": "chorrillana", "city": "Valpraiso", "type": "restaurant", "activities_raw": "dining", "lat": -33.0458741, "lng": -71.6223246}, {"name": "Plaza Sotomayor", "description": "", "city": "Valpraiso", "type": "urban landmark", "activities_raw": "walking tour", "lat": -33.0385622, "lng": -71.6287555}, {"name": "Playa Caleta Portales", "description": "fish market; La Playa food cart", "city": "Valpraiso", "type": "market", "activities_raw": "dining", "lat": -33.0313669, "lng": -71.59055690000001}, {"name": "Empanadas Fritas Las Deliciosas", "description": "", "city": "Valpraiso", "type": "restaurant", "activities_raw": "dining", "lat": -32.92116, "lng": -71.5081211}, {"name": "Bar Cinzano", "description": "tango bar; taste\u00a0jarra de borgo\u00f1a", "city": "Valpraiso", "type": "bar", "activities_raw": "dining", "lat": -33.0431125, "lng": -71.6248844}, {"name": "Bar Cinzano", "description": "tango bar; taste\u00a0jarra de borgo\u00f1a", "city": "Valpraiso", "type": "bar", "activities_raw": "nightlife", "lat": -33.0431125, "lng": -71.6248844}, {"name": "Bar Cinzano", "description": "tango bar; taste\u00a0jarra de borgo\u00f1a", "city": "Valpraiso", "type": "bar", "activities_raw": "dance", "lat": -33.0431125, "lng": -71.6248844}, {"name": "Paseo Gervasoni", "description": "", "city": "Valpraiso", "type": "street", "activities_raw": "street art", "lat": -33.0412166, "lng": -71.6267058}, {"name": "Ascensor El Peral", "description": "", "city": "Valpraiso", "type": "transportation", "activities_raw": "cable car", "lat": -33.0394995, "lng": -71.6294546}, {"name": "Ascensor Concepcion", "description": "new", "city": "Valpraiso", "type": "transportation", "activities_raw": "cable car", "lat": -33.0407669, "lng": -71.6264097}, {"name": "Ascensor Reina Victoria", "description": "1920", "city": "Valpraiso", "type": "transportation", "activities_raw": "cable car", "lat": -33.0438879, "lng": -71.62644279999999}, {"name": "Cerro Polanco", "description": "take the lift", "city": "Valpraiso", "type": "hill", "activities_raw": "view", "lat": -33.0504071, "lng": -71.5986684}, {"name": "Ascensor Artilleria", "description": "", "city": "Valpraiso", "type": "transportation", "activities_raw": "cable car", "lat": -33.033632, "lng": -71.63001419999999}, {"name": "Caf\u00e9 Rep\u00fablica", "description": "", "city": "Valpraiso", "type": "restaurant", "activities_raw": "dining", "lat": -33.0313998, "lng": -71.63460169999999}, {"name": "Muelle Prat", "description": "hire a fisherman to take you on boat around the bay", "city": "Valpraiso", "type": "harbor", "activities_raw": "tour", "lat": -33.0373883, "lng": -71.627336}, {"name": "Plaza El Descanso", "description": "Sunday afternoon gatherings", "city": "Valpraiso", "type": "urban landmark", "activities_raw": "cultural event", "lat": -33.0447403, "lng": -71.6265816}, {"name": "Empanader\u00eda y taller de masas \"Le Pat\u00f3\"", "description": "", "city": "Valpraiso", "type": "restaurant", "activities_raw": "dining", "lat": -33.0438631, "lng": -71.6290447}, {"name": "Museo a Cielo Abierto", "description": "", "city": "Valpraiso", "type": "museum", "activities_raw": "art museum", "lat": -33.0482949, "lng": -71.62234769999999}, {"name": "Pasaje Fischer", "description": "colorful stairs", "city": "Valpraiso", "type": "street", "activities_raw": "street art", "lat": -33.0412685, "lng": -71.62786369999999}, {"name": "Le Petit Caf\u00e9", "description": "", "city": "Valpraiso", "type": "restaurant", "activities_raw": "dining", "lat": -33.0411283, "lng": -71.62790989999999}, {"name": "Paseo Galvez", "description": "", "city": "Valpraiso", "type": "street", "activities_raw": "street art", "lat": -33.0412195, "lng": -71.62723749999999}, {"name": "Paseo Atkinson", "description": "", "city": "Valpraiso", "type": "street", "activities_raw": "street art", "lat": -33.0425808, "lng": -71.6253261}, {"name": "Beethoven", "description": "famous stairs", "city": "Valpraiso", "type": "street", "activities_raw": "street art", "lat": -33.0430342, "lng": -71.6264599}, {"name": "Cerro Artiller\u00eda de Valpara\u00edso", "description": "", "city": "Valpraiso", "type": "hill", "activities_raw": "view", "lat": -33.0325015, "lng": -71.6308631}, {"name": "Paseo 21 de Mayo de Valpara\u00edso", "description": "", "city": "Valpraiso", "type": "hill", "activities_raw": "view", "lat": -33.0323222, "lng": -71.6305445}, {"name": "Cerro Playa Ancha de Valpara\u00edso", "description": "less touristy Cerro", "city": "Valpraiso", "type": "hill", "activities_raw": "wander", "lat": -33.0299823, "lng": -71.6363509}, {"name": "Playa Las Torpederas", "description": "", "city": "Valpraiso", "type": "beach", "activities_raw": "beach", "lat": -33.0219933, "lng": -71.6441524}, {"name": "Avenida Gran Breta\u00f1a", "description": "", "city": "Valpraiso", "type": "neighborhood", "activities_raw": "wander", "lat": -33.0300633, "lng": -71.6346352}, {"name": "Avenida Alemania", "description": "O bus from Avenida Argentina", "city": "Valpraiso", "type": "street", "activities_raw": "view", "lat": -33.0528936, "lng": -71.6192835}, {"name": "Valpara\u00edso Profundo", "description": "cafe; experimental art", "city": "Valpraiso", "type": "restaurant", "activities_raw": "dining", "lat": -33.0411281, "lng": -71.6280555}, {"name": "Valpara\u00edso Profundo", "description": "cafe; experimental art", "city": "Valpraiso", "type": "restaurant", "activities_raw": "art", "lat": -33.0411281, "lng": -71.6280555}, {"name": "Ascensor Bar\u00f3n", "description": "sunset", "city": "Valpraiso", "type": "transportation", "activities_raw": "view", "lat": -33.0428477, "lng": -71.6039138}, {"name": "Mirador Marina Mercante", "description": "sunset", "city": "Valpraiso", "type": "viewpoint", "activities_raw": "view", "lat": -33.0410455, "lng": -71.64496679999999}, {"name": "Bar Cinzano", "description": "tango", "city": "Valpraiso", "type": "restaurant", "activities_raw": "nightlife", "lat": -33.0431125, "lng": -71.6248844}, {"name": "Bar Cinzano", "description": "tango", "city": "Valpraiso", "type": "restaurant", "activities_raw": "dance", "lat": -33.0431125, "lng": -71.6248844}, {"name": "Portofino Restaurant", "description": "sunset", "city": "Valpraiso", "type": "restaurant", "activities_raw": "dining", "lat": -33.0311747, "lng": -71.58763499999999}, {"name": "Portofino Restaurant", "description": "sunset", "city": "Valpraiso", "type": "restaurant", "activities_raw": "view", "lat": -33.0311747, "lng": -71.58763499999999}, {"name": "Alma M\u00eda Valpara\u00edso", "description": "", "city": "Valpraiso", "type": "restaurant", "activities_raw": "dining", "lat": -33.0431667, "lng": -71.6280075}, {"name": "Restaurante Caf\u00e9 Vinilo", "description": "", "city": "Valpraiso", "type": "restaurant", "activities_raw": "dining", "lat": -33.043472, "lng": -71.628189}, {"name": "Bellavista", "description": "", "city": "Valpraiso", "type": "neighborhood", "activities_raw": "nightlife", "lat": -33.0262022, "lng": -71.5637817}, {"name": "Bellavista", "description": "", "city": "Valpraiso", "type": "neighborhood", "activities_raw": "music", "lat": -33.0262022, "lng": -71.5637817}, {"name": "Bellavista", "description": "", "city": "Valpraiso", "type": "neighborhood", "activities_raw": "art", "lat": -33.0262022, "lng": -71.5637817}, {"name": "Flower clock", "description": "", "city": "Valpraiso", "type": "urban landmark", "activities_raw": "sightsee", "lat": -33.0233081, "lng": -71.56716829999999}, {"name": "Re\u00f1aca beach", "description": "", "city": "Valpraiso", "type": "beach", "activities_raw": "beach", "lat": -32.9696809, "lng": -71.54564479999999}, {"name": "Mercado Municipal", "description": "vegetable; gift", "city": "Valpraiso", "type": "market", "activities_raw": "shopping", "lat": -33.0246483, "lng": -71.5450395}, {"name": "Termas Geometricas", "description": "", "city": "Pucon", "type": "thermal bath", "activities_raw": "thermal bath", "lat": -39.5019435, "lng": -71.8749435}, {"name": "Parque Nacional Conguill\u00edo", "description": "", "city": "Pucon", "type": "nature", "activities_raw": "explore", "lat": -38.6910478, "lng": -71.6735439}, {"name": "Budi Lake", "description": "", "city": "Pucon", "type": "nature", "activities_raw": "TBD", "lat": -38.8578866, "lng": -73.3060197}, {"name": "Parque Nacional Villarrica", "description": "volcano climb", "city": "Pucon", "type": "nature", "activities_raw": "hike", "lat": -39.4812979, "lng": -71.76404339999999}, {"name": "Parque Nacional Villarrica", "description": "volcano climb", "city": "Pucon", "type": "nature", "activities_raw": "explore", "lat": -39.4812979, "lng": -71.76404339999999}, {"name": "Parque Nacional Huerquehue", "description": "", "city": "Pucon", "type": "nature", "activities_raw": "explore", "lat": -39.1719057, "lng": -71.727893}, {"name": "Parque Ojos del Caburgua", "description": "blue ponds", "city": "Pucon", "type": "nature", "activities_raw": "explore", "lat": -39.2374179, "lng": -71.8379899}, {"name": "Que llueva caf\u00e9 - Cafeteria de Especialidad", "description": "", "city": "Pucon", "type": "restaurant", "activities_raw": "dining", "lat": -39.2773839, "lng": -71.96981219999999}, {"name": "Puras Pavadas", "description": "empanada", "city": "Pucon", "type": "restaurant", "activities_raw": "dining", "lat": -39.275642, "lng": -71.9737251}, {"name": "Trawen", "description": "", "city": "Pucon", "type": "restaurant", "activities_raw": "dining", "lat": -39.2768008, "lng": -71.9757443}, {"name": "El Camino", "description": "burger", "city": "Pucon", "type": "restaurant", "activities_raw": "dining", "lat": -39.2739527, "lng": -71.97566669999999}, {"name": "Vi\u00f1a Santa Cruz", "description": "", "city": "Colchagua valley", "type": "winery", "activities_raw": "wine tasting", "lat": -34.7029353, "lng": -71.57226849999999}, {"name": "Vi\u00f1a Santa Cruz", "description": "", "city": "Colchagua valley", "type": "winery", "activities_raw": "car museum", "lat": -34.7029353, "lng": -71.57226849999999}, {"name": "Observatorio Cerro Cham\u00e1n", "description": "cable car up", "city": "Colchagua valley", "type": "observatory", "activities_raw": "view", "lat": -34.7019804, "lng": -71.55563409999999}, {"name": "Vi\u00f1a MontGras", "description": "", "city": "Colchagua valley", "type": "winery", "activities_raw": "wine tasting", "lat": -34.563792, "lng": -71.401691}, {"name": "Vi\u00f1a MontGras", "description": "", "city": "Colchagua valley", "type": "winery", "activities_raw": "wine making", "lat": -34.563792, "lng": -71.401691}, {"name": "Vi\u00f1a MontGras", "description": "", "city": "Colchagua valley", "type": "winery", "activities_raw": "harvest tour", "lat": -34.563792, "lng": -71.401691}, {"name": "Vi\u00f1a Laura Hartwig", "description": "", "city": "Colchagua valley", "type": "winery", "activities_raw": "wine tasting", "lat": -34.6312884, "lng": -71.37352460000001}, {"name": "Vi\u00f1a Casa Silva", "description": "", "city": "Colchagua valley", "type": "winery", "activities_raw": "wine tasting", "lat": -34.538579, "lng": -70.966841}, {"name": "Vi\u00f1a Casa Silva", "description": "", "city": "Colchagua valley", "type": "winery", "activities_raw": "rodeo", "lat": -34.538579, "lng": -70.966841}, {"name": "Rapel Lake", "description": "", "city": "Colchagua valley", "type": "nature", "activities_raw": "explore", "lat": -34.1445627, "lng": -71.42399929999999}, {"name": "Clos Apalta Winery", "description": "also accommodation", "city": "Colchagua valley", "type": "winery", "activities_raw": "wine tasting", "lat": -34.6072131, "lng": -71.296123}, {"name": "Vi\u00f1a Montes", "description": "", "city": "Colchagua valley", "type": "winery", "activities_raw": "wine tasting", "lat": -34.6160556, "lng": -71.27386109999999}, {"name": "OWM wines", "description": "", "city": "Colchagua valley", "type": "winery", "activities_raw": "wine tasting", "lat": -34.6845286, "lng": -71.47001879999999}, {"name": "Fuegos de Apalta", "description": "", "city": "Colchagua valley", "type": "restaurant", "activities_raw": "dining", "lat": -34.6113626, "lng": -71.272758}, {"name": "Vi\u00f1a Lapostolle", "description": "", "city": "Colchagua valley", "type": "winery", "activities_raw": "wine tasting", "lat": -34.6395208, "lng": -71.3130465}];
+    const map = L.map('map', { zoomControl: false }).setView([-33.4489, -70.6693], 6);
+    L.control.zoom({ position: 'topright' }).addTo(map);
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map);
+    
+    let markerLayer = L.layerGroup().addTo(map);
+    let locationLayer = L.layerGroup().addTo(map);
+    
+    let activeActivities = new Set();
+    let seenActivities = new Set();
+    const colorPalette = ['#e6194b', '#3cb44b', '#ffe119', '#4363d8', '#f58231', '#911eb4', '#46f0f0', '#f032e6', '#bcf60c', '#fabebe', '#008080', '#e6beff', '#9a6324', '#fffac8', '#800000', '#aaffc3', '#808000', '#ffd8b1', '#000075', '#808080'];
+    const activityColors = {};
+    let isTracking = false;
+
+    // --- Geolocation Logic ---
+    function toggleLocation() {
+        const btn = document.getElementById('geoBtn');
+        if (!isTracking) {
+            map.locate({ watch: true, setView: false, enableHighAccuracy: true });
+            btn.innerText = "🛑 Stop Tracking";
+            btn.classList.add('active');
+            isTracking = true;
+        } else {
+            map.stopLocate();
+            locationLayer.clearLayers();
+            btn.innerText = "📍 Find My Location";
+            btn.classList.remove('active');
+            isTracking = false;
+        }
+    }
+
+    map.on('locationfound', function(e) {
+        locationLayer.clearLayers();
+        // Accuracy Circle
+        L.circle(e.latlng, e.accuracy).addTo(locationLayer);
+        // Current Location Marker
+        L.circleMarker(e.latlng, {
+            radius: 8,
+            fillColor: "#3498db",
+            color: "white",
+            weight: 3,
+            opacity: 1,
+            fillOpacity: 1
+        }).addTo(locationLayer).bindPopup("You are here");
+        
+        // Optionally center map on first find
+        if (locationLayer.getLayers().length === 2) map.panTo(e.latlng);
+    });
+
+    map.on('locationerror', function(e) {
+        alert("Location access denied or unavailable.");
+        isTracking = false;
+        document.getElementById('geoBtn').innerText = "📍 Find My Location";
+    });
+
+    // --- Standard Map Functions ---
+    function toggleMobileDrawer() {
+        const content = document.getElementById('sidebarContent');
+        const handle = document.getElementById('drawer-handle');
+        content.classList.toggle('active');
+        handle.innerText = content.classList.contains('active') ? '✖ Close Filters' : '☰ Show Filters';
+    }
+
+    function init() {
+        const cities = [...new Set(data.map(d => d.city))].sort();
+        const citySel = document.getElementById('cityFilter');
+        cities.forEach(c => citySel.add(new Option(c, c)));
+        updateFilterUI(); 
+        updateMap();
+        onCityChange(); 
+    }
+
+    function updateFilterUI() {
+        const bounds = map.getBounds();
+        const pointsInView = data.filter(d => bounds.contains([d.lat, d.lng]));
+        const counts = {};
+        pointsInView.forEach(d => {
+            const currentActs = d.activities_raw ? d.activities_raw.split(',').map(a => a.trim()) : [];
+            currentActs.forEach(a => { if (a) counts[a] = (counts[a] || 0) + 1; });
+        });
+
+        const availableActs = Object.keys(counts).sort();
+        availableActs.forEach(a => {
+            if (!seenActivities.has(a)) {
+                activeActivities.add(a);
+                seenActivities.add(a);
+                if (!activityColors[a]) activityColors[a] = colorPalette[Object.keys(activityColors).length % colorPalette.length];
+            }
+        });
+        renderCheckboxes(availableActs, counts);
+    }
+
+    function renderCheckboxes(list, counts) {
+        const container = document.getElementById('activityCheckboxes');
+        container.innerHTML = '';
+        list.forEach(item => {
+            const label = document.createElement('label');
+            label.className = 'checkbox-item';
+            const isChecked = activeActivities.has(item) ? 'checked' : '';
+            const color = activityColors[item];
+            label.innerHTML = `<input type="checkbox" value="${item}" ${isChecked} onchange="handleCheck(this)"> <span class="count-badge">${counts[item]}</span><span class="color-swatch" style="background:${color}"></span>${item}`;
+            container.appendChild(label);
+        });
+    }
+
+    function handleCheck(cb) {
+        if (cb.checked) activeActivities.add(cb.value);
+        else activeActivities.delete(cb.value);
+        updateMap();
+    }
+
+    function selectAll() {
+        document.querySelectorAll('#activityCheckboxes input').forEach(cb => { cb.checked = true; activeActivities.add(cb.value); });
+        updateMap();
+    }
+
+    function deselectAll() {
+        document.querySelectorAll('#activityCheckboxes input').forEach(cb => { cb.checked = false; activeActivities.delete(cb.value); });
+        updateMap();
+    }
+
+    function updateMap() {
+        markerLayer.clearLayers();
+        const city = document.getElementById('cityFilter').value;
+        const filtered = data.filter(d => {
+            const cityM = city === 'all' || d.city === city;
+            const currentActs = d.activities_raw ? d.activities_raw.split(',').map(a => a.trim()) : [];
+            return cityM && currentActs.some(a => activeActivities.has(a));
+        });
+
+        filtered.forEach(d => {
+            const currentActs = d.activities_raw ? d.activities_raw.split(',').map(a => a.trim()) : [];
+            const color = activityColors[currentActs.find(a => activeActivities.has(a))] || '#3388ff';
+            L.circleMarker([d.lat, d.lng], { radius: 10, fillColor: color, color: "#000", weight: 1, fillOpacity: 0.8 })
+             .bindPopup(`<b>${d.name}</b><br>Type: ${d.type}<br>${d.description}<br><small>Activities: ${d.activities_raw}</small>`)
+             .addTo(markerLayer);
+        });
+    }
+
+    function onCityChange() {
+        const city = document.getElementById('cityFilter').value;
+        const pts = (city === 'all') ? data : data.filter(d => d.city === city);
+        if (pts.length > 0) {
+            const group = new L.featureGroup(pts.map(p => L.marker([p.lat, p.lng])));
+            map.fitBounds(group.getBounds().pad(0.1));
+        }
+        updateMap();
+    }
+
+    map.on('moveend', updateFilterUI);
+    init();
+</script>
+</body>
+</html>
